@@ -32,7 +32,7 @@ func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger) *Runner {
 
 func (r *Runner) saveState() {
 	if err := state.Save(r.state); err != nil {
-		r.log.Error("failed to save state: %v", err)
+		r.log.Log("error: failed to save state: %v", err)
 	}
 }
 
@@ -43,7 +43,7 @@ func (r *Runner) Run() error {
 			now := time.Now()
 			r.state.FinishedAt = &now
 			r.saveState()
-			r.log.Error("pipeline failed at step %q: %v", step.ID, err)
+			r.log.Log("pipeline failed at step %q: %v", step.ID, err)
 			fmt.Fprintf(os.Stderr,
 				"\nPipeline failed. Resume with:\n  pipe %s --resume %s\n\n",
 				r.pipeline.Name, r.state.RunID,
@@ -56,7 +56,7 @@ func (r *Runner) Run() error {
 	now := time.Now()
 	r.state.FinishedAt = &now
 	r.saveState()
-	r.log.Info("pipeline %q completed (run %s)", r.pipeline.Name, r.state.RunID)
+	r.log.Log("pipeline %q completed (run %s)", r.pipeline.Name, r.state.RunID)
 	return nil
 }
 
@@ -85,36 +85,41 @@ func (r *Runner) runStep(step model.Step) error {
 
 	// Resume logic: skip done non-sensitive steps
 	if ss.Status == "done" && !step.Sensitive {
-		r.log.Info("[%s] skipping (already done)", step.ID)
+		r.log.Log("[%s] skipping (already done)", step.ID)
 		return nil
 	}
 
-	r.log.Info("[%s] running", step.ID)
+	sl := r.log.Step(step.ID, step.Sensitive)
+	if step.Sensitive {
+		sl.Redacted()
+	}
 
 	switch {
 	case step.Run.IsSingle():
-		return r.runSingle(step)
+		return r.runSingle(step, sl)
 	case step.Run.IsStrings():
-		return r.runParallelStrings(step)
+		return r.runParallelStrings(step, sl)
 	case step.Run.IsSubRuns():
-		return r.runParallelSubRuns(step)
+		return r.runParallelSubRuns(step, sl)
 	default:
 		return fmt.Errorf("step %q: no run command", step.ID)
 	}
 }
 
-func (r *Runner) runSingle(step model.Step) error {
+func (r *Runner) runSingle(step model.Step, sl *logging.StepLogger) error {
 	ss := r.state.Steps[step.ID]
 	ss.Status = "running"
 	r.state.Steps[step.ID] = ss
 	r.saveState()
+
+	sl.Log("%s", step.Run.Single)
 
 	maxAttempts := step.Retry + 1
 	var output string
 
 	attempts, err := Retry(maxAttempts, func() error {
 		var execErr error
-		output, execErr = r.execCapture(step.Run.Single)
+		output, execErr = r.execCapture(step.Run.Single, sl)
 		return execErr
 	})
 
@@ -123,10 +128,12 @@ func (r *Runner) runSingle(step model.Step) error {
 	ss.Attempts = attempts
 
 	if err != nil {
+		code := exitCode(err)
 		ss.Status = "failed"
-		ss.ExitCode = exitCode(err)
+		ss.ExitCode = code
 		r.state.Steps[step.ID] = ss
 		r.saveState()
+		sl.Exit(code)
 		return fmt.Errorf("step %q failed: %w", step.ID, err)
 	}
 
@@ -138,12 +145,13 @@ func (r *Runner) runSingle(step model.Step) error {
 	}
 	r.state.Steps[step.ID] = ss
 	r.saveState()
+	sl.Exit(0)
 
 	r.envVars[EnvKey(step.ID)] = strings.TrimRight(output, "\n")
 	return nil
 }
 
-func (r *Runner) runParallelStrings(step model.Step) error {
+func (r *Runner) runParallelStrings(step model.Step, sl *logging.StepLogger) error {
 	ss := r.state.Steps[step.ID]
 	ss.Status = "running"
 	r.state.Steps[step.ID] = ss
@@ -159,8 +167,8 @@ func (r *Runner) runParallelStrings(step model.Step) error {
 		wg.Add(1)
 		go func(c string) {
 			defer wg.Done()
-			r.log.Info("[%s] parallel: %s", step.ID, c)
-			if err := r.execNoCapture(c); err != nil {
+			sl.Log("parallel: %s", c)
+			if err := r.execNoCapture(c, sl); err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Sprintf("%s: %v", c, err))
 				mu.Unlock()
@@ -186,7 +194,7 @@ func (r *Runner) runParallelStrings(step model.Step) error {
 	return nil
 }
 
-func (r *Runner) runParallelSubRuns(step model.Step) error {
+func (r *Runner) runParallelSubRuns(step model.Step, _ *logging.StepLogger) error {
 	ss := r.state.Steps[step.ID]
 	ss.Status = "running"
 	if ss.SubSteps == nil {
@@ -205,16 +213,20 @@ func (r *Runner) runParallelSubRuns(step model.Step) error {
 		existing := ss.SubSteps[sub.ID]
 		// Resume: skip done non-sensitive sub-runs
 		if existing.Status == "done" && !sub.Sensitive {
-			r.log.Info("[%s/%s] skipping (already done)", step.ID, sub.ID)
+			r.log.Log("[%s/%s] skipping (already done)", step.ID, sub.ID)
 			continue
 		}
 
 		wg.Add(1)
 		go func(sr model.SubRun) {
 			defer wg.Done()
-			r.log.Info("[%s/%s] running", step.ID, sr.ID)
+			subSl := r.log.Step(step.ID+"/"+sr.ID, sr.Sensitive)
+			if sr.Sensitive {
+				subSl.Redacted()
+			}
+			subSl.Log("%s", sr.Run)
 
-			output, err := r.execCapture(sr.Run)
+			output, err := r.execCapture(sr.Run, subSl)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -223,10 +235,12 @@ func (r *Runner) runParallelSubRuns(step model.Step) error {
 			subState := state.StepState{At: &now}
 
 			if err != nil {
+				code := exitCode(err)
 				subState.Status = "failed"
-				subState.ExitCode = exitCode(err)
+				subState.ExitCode = code
 				ss.SubSteps[sr.ID] = subState
 				errs = append(errs, fmt.Sprintf("%s: %v", sr.ID, err))
+				subSl.Exit(code)
 			} else {
 				subState.Status = "done"
 				subState.ExitCode = 0
@@ -236,6 +250,7 @@ func (r *Runner) runParallelSubRuns(step model.Step) error {
 				}
 				ss.SubSteps[sr.ID] = subState
 				r.envVars[EnvKey(step.ID, sr.ID)] = strings.TrimRight(output, "\n")
+				subSl.Exit(0)
 			}
 		}(sub)
 	}
@@ -258,21 +273,21 @@ func (r *Runner) runParallelSubRuns(step model.Step) error {
 	return nil
 }
 
-func (r *Runner) execCapture(cmdStr string) (string, error) {
+func (r *Runner) execCapture(cmdStr string, sl *logging.StepLogger) (string, error) {
 	cmd := exec.Command("sh", "-c", cmdStr)
 	cmd.Env = BuildEnv(r.envVars)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
-	cmd.Stderr = newLogWriter(r.log)
+	cmd.Stderr = sl.Writer()
 	err := cmd.Run()
 	return stdout.String(), err
 }
 
-func (r *Runner) execNoCapture(cmdStr string) error {
+func (r *Runner) execNoCapture(cmdStr string, sl *logging.StepLogger) error {
 	cmd := exec.Command("sh", "-c", cmdStr)
 	cmd.Env = BuildEnv(r.envVars)
-	cmd.Stdout = newLogWriter(r.log)
-	cmd.Stderr = newLogWriter(r.log)
+	cmd.Stdout = sl.Writer()
+	cmd.Stderr = sl.Writer()
 	return cmd.Run()
 }
 
@@ -282,21 +297,3 @@ func exitCode(err error) int {
 	}
 	return 1
 }
-
-// logWriter sends command output lines to the logger.
-type logWriter struct {
-	log *logging.Logger
-}
-
-func newLogWriter(l *logging.Logger) *logWriter {
-	return &logWriter{log: l}
-}
-
-func (w *logWriter) Write(p []byte) (int, error) {
-	s := strings.TrimRight(string(p), "\n")
-	if s != "" {
-		w.log.Info("  | %s", s)
-	}
-	return len(p), nil
-}
-
