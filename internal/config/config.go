@@ -1,0 +1,38 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+)
+
+var (
+	BaseDir  string
+	FilesDir string
+	StateDir string
+	LogDir   string
+)
+
+func init() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic("cannot determine home directory: " + err.Error())
+	}
+	BaseDir = filepath.Join(home, ".pipe")
+	FilesDir = filepath.Join(BaseDir, "files")
+	StateDir = filepath.Join(BaseDir, "state")
+	LogDir = filepath.Join(BaseDir, "logs")
+}
+
+func EnsureDirs(pipelineName string) error {
+	dirs := []string{
+		FilesDir,
+		filepath.Join(StateDir, pipelineName),
+		LogDir,
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
