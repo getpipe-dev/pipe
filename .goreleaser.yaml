@@ -1,0 +1,33 @@
+version: 2
+
+builds:
+  - main: .
+    binary: pipe
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+    name_template: "pipe-{{.Version}}-{{.Os}}-{{.Arch}}"
+
+brews:
+  - repository:
+      owner: destis
+      name: pipe
+      directory: Formula
+    homepage: https://github.com/destis/pipe
+    description: CI-friendly pipeline runner inspired by Taskfile
+    license: MIT
+    install: |
+      bin.install "pipe"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/pipe --version")
+
+changelog:
+  sort: asc
