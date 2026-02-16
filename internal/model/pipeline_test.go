@@ -196,6 +196,59 @@ func TestHelpers_ZeroValue(t *testing.T) {
 	}
 }
 
+func TestPipeline_FullUnmarshalWithCached(t *testing.T) {
+	input := `
+name: cached-pipeline
+description: "pipeline with caching"
+steps:
+  - id: sso-login
+    run: "aws sso login"
+    cached: true
+  - id: build
+    run: "npm run build"
+    cached:
+      expireAfter: "1h"
+  - id: deploy
+    run: "deploy --prod"
+    cached:
+      expireAfter: "18:10 UTC"
+  - id: no-cache
+    run: "echo hello"
+`
+	var p Pipeline
+	if err := yaml.Unmarshal([]byte(input), &p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.Steps) != 4 {
+		t.Fatalf("expected 4 steps, got %d", len(p.Steps))
+	}
+	// cached: true
+	if !p.Steps[0].Cached.Enabled {
+		t.Fatal("step 0: expected Cached.Enabled == true")
+	}
+	if p.Steps[0].Cached.ExpireAfter != "" {
+		t.Fatalf("step 0: expected empty ExpireAfter, got %q", p.Steps[0].Cached.ExpireAfter)
+	}
+	// cached with duration
+	if !p.Steps[1].Cached.Enabled {
+		t.Fatal("step 1: expected Cached.Enabled == true")
+	}
+	if p.Steps[1].Cached.ExpireAfter != "1h" {
+		t.Fatalf("step 1: expected ExpireAfter %q, got %q", "1h", p.Steps[1].Cached.ExpireAfter)
+	}
+	// cached with absolute time
+	if !p.Steps[2].Cached.Enabled {
+		t.Fatal("step 2: expected Cached.Enabled == true")
+	}
+	if p.Steps[2].Cached.ExpireAfter != "18:10 UTC" {
+		t.Fatalf("step 2: expected ExpireAfter %q, got %q", "18:10 UTC", p.Steps[2].Cached.ExpireAfter)
+	}
+	// no cached field
+	if p.Steps[3].Cached.Enabled {
+		t.Fatal("step 3: expected Cached.Enabled == false")
+	}
+}
+
 // contains is a tiny helper to avoid importing strings in tests.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)

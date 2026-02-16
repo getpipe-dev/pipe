@@ -60,6 +60,76 @@ func Validate(p *model.Pipeline) error {
 	return nil
 }
 
+// Warnings returns non-fatal warnings about the pipeline configuration.
+func Warnings(p *model.Pipeline) []string {
+	var warns []string
+
+	// Collect env var names produced by sensitive steps
+	sensitiveVars := make(map[string]string) // env var → step ID
+	for _, s := range p.Steps {
+		if !s.Sensitive {
+			continue
+		}
+		sensitiveVars[envKey(s.ID)] = s.ID
+		if s.Run.IsSubRuns() {
+			for _, sr := range s.Run.SubRuns {
+				if sr.Sensitive {
+					sensitiveVars[envKey(s.ID, sr.ID)] = s.ID + "/" + sr.ID
+				}
+			}
+		}
+	}
+
+	for _, s := range p.Steps {
+		// Warn: cached + sensitive means step won't re-execute and env var won't be available
+		if s.Cached.Enabled && s.Sensitive {
+			warns = append(warns, fmt.Sprintf(
+				"step %q: cached + sensitive — step will be skipped on cache hit, output is not stored and $%s will not be set",
+				s.ID, envKey(s.ID),
+			))
+		}
+
+		// Warn: referencing a sensitive step's env var (it will be re-executed on resume)
+		for varName, srcID := range sensitiveVars {
+			if referencesVar(s, varName) {
+				warns = append(warns, fmt.Sprintf(
+					"step %q: references $%s from sensitive step %q — that step will always re-execute on resume",
+					s.ID, varName, srcID,
+				))
+			}
+		}
+	}
+	return warns
+}
+
+// envKey mirrors runner.EnvKey: joins parts with _, replaces hyphens, uppercases.
+func envKey(parts ...string) string {
+	joined := strings.Join(parts, "_")
+	joined = strings.ReplaceAll(joined, "-", "_")
+	return "PIPE_" + strings.ToUpper(joined)
+}
+
+// referencesVar checks if any run command in a step contains the given variable name.
+func referencesVar(s model.Step, varName string) bool {
+	check := func(cmd string) bool {
+		return strings.Contains(cmd, "$"+varName) || strings.Contains(cmd, "${"+varName+"}")
+	}
+	if s.Run.IsSingle() && check(s.Run.Single) {
+		return true
+	}
+	for _, cmd := range s.Run.Strings {
+		if check(cmd) {
+			return true
+		}
+	}
+	for _, sr := range s.Run.SubRuns {
+		if check(sr.Run) {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidatePipeline loads and validates a pipeline by name.
 // It returns nil on success or a descriptive error.
 func ValidatePipeline(name string) error {

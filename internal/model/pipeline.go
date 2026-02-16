@@ -13,11 +13,12 @@ type Pipeline struct {
 }
 
 type Step struct {
-	ID        string   `yaml:"id"`
-	Run       RunField `yaml:"run"`
-	Parallel  bool     `yaml:"parallel"`
-	Sensitive bool     `yaml:"sensitive"`
-	Retry     int      `yaml:"retry"`
+	ID        string     `yaml:"id"`
+	Run       RunField   `yaml:"run"`
+	Parallel  bool       `yaml:"parallel"`
+	Sensitive bool       `yaml:"sensitive"`
+	Retry     int        `yaml:"retry"`
+	Cached    CacheField `yaml:"cached"`
 }
 
 // RunField supports three YAML forms:

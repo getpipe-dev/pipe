@@ -11,6 +11,7 @@ var (
 	FilesDir string
 	StateDir string
 	LogDir   string
+	CacheDir string
 )
 
 func init() {
@@ -22,6 +23,7 @@ func init() {
 	FilesDir = filepath.Join(BaseDir, "files")
 	StateDir = filepath.Join(BaseDir, "state")
 	LogDir = filepath.Join(BaseDir, "logs")
+	CacheDir = filepath.Join(BaseDir, "cache")
 }
 
 func EnsureDirs(pipelineName string) error {
@@ -29,6 +31,7 @@ func EnsureDirs(pipelineName string) error {
 		FilesDir,
 		filepath.Join(StateDir, pipelineName),
 		LogDir,
+		CacheDir,
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {

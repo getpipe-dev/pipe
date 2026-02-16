@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/idestis/pipe/internal/cache"
 	"github.com/idestis/pipe/internal/config"
 	"github.com/idestis/pipe/internal/logging"
 	"github.com/idestis/pipe/internal/parser"
@@ -20,7 +21,7 @@ var version = "dev"
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: pipe <command|pipeline> [args]")
-		fmt.Fprintln(os.Stderr, "commands: init, list, validate")
+		fmt.Fprintln(os.Stderr, "commands: init, list, validate, cache")
 		os.Exit(1)
 	}
 
@@ -31,6 +32,8 @@ Commands:
   init <name>       Create a new pipeline
   list              List all pipelines
   validate <name>   Validate a pipeline
+  cache list        List cached step results
+  cache clear [id]  Clear one or all cache entries
 
 Run a pipeline:
   pipe <name> [--resume <run-id>]
@@ -53,6 +56,8 @@ Flags:
 		cmdList()
 	case "validate":
 		cmdValidate()
+	case "cache":
+		cmdCache()
 	default:
 		runPipeline()
 	}
@@ -70,7 +75,7 @@ func cmdInit() {
 	name := os.Args[2]
 
 	switch name {
-	case "init", "list", "validate":
+	case "init", "list", "validate", "cache":
 		fmt.Fprintf(os.Stderr, "error: %q is a reserved command name\n", name)
 		os.Exit(1)
 	}
@@ -145,7 +150,8 @@ func cmdValidate() {
 	}
 	name := os.Args[2]
 
-	if err := parser.ValidatePipeline(name); err != nil {
+	pipeline, err := parser.LoadPipeline(name)
+	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintf(os.Stderr, "error: pipeline %q not found\n", name)
 			fmt.Fprintf(os.Stderr, "  run \"pipe list\" to see available pipelines, or \"pipe init %s\" to create one\n", name)
@@ -156,7 +162,79 @@ func cmdValidate() {
 		}
 		os.Exit(1)
 	}
+	for _, w := range parser.Warnings(pipeline) {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
 	fmt.Printf("pipeline %q is valid\n", name)
+}
+
+func cmdCache() {
+	if len(os.Args) < 3 || hasFlag(os.Args[2:], "-h", "--help") {
+		fmt.Println(`Usage: pipe cache <subcommand>
+
+Subcommands:
+  list              List cached step results
+  clear [step-id]   Clear one or all cache entries`)
+		return
+	}
+
+	switch os.Args[2] {
+	case "list":
+		cmdCacheList()
+	case "clear":
+		cmdCacheClear()
+	default:
+		fmt.Fprintf(os.Stderr, "error: unknown cache subcommand %q\n", os.Args[2])
+		os.Exit(1)
+	}
+}
+
+func cmdCacheList() {
+	entries, err := cache.List()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(entries) == 0 {
+		fmt.Println("no cached entries")
+		return
+	}
+
+	// Find max widths for alignment
+	maxStep := len("STEP")
+	for _, e := range entries {
+		if len(e.StepID) > maxStep {
+			maxStep = len(e.StepID)
+		}
+	}
+
+	fmt.Printf("%-*s  %-20s  %-20s  %s\n", maxStep, "STEP", "CACHED AT", "EXPIRES AT", "TYPE")
+	for _, e := range entries {
+		cachedAt := e.CachedAt.Local().Format("2006-01-02 15:04:05")
+		expiresAt := "never"
+		if e.ExpiresAt != nil {
+			expiresAt = e.ExpiresAt.Local().Format("2006-01-02 15:04:05")
+		}
+		fmt.Printf("%-*s  %-20s  %-20s  %s\n", maxStep, e.StepID, cachedAt, expiresAt, e.RunType)
+	}
+}
+
+func cmdCacheClear() {
+	if len(os.Args) >= 4 {
+		stepID := os.Args[3]
+		if err := cache.Clear(stepID); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("cleared cache for %q\n", stepID)
+		return
+	}
+
+	if err := cache.ClearAll(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("cleared all cache entries")
 }
 
 func validName(name string) bool {
@@ -215,6 +293,10 @@ func runPipeline() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 		os.Exit(1)
+	}
+
+	for _, w := range parser.Warnings(pipeline) {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
 	}
 
 	if err := config.EnsureDirs(pipeline.Name); err != nil {

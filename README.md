@@ -86,6 +86,7 @@ Each step requires an `id` and a `run` field. Steps run sequentially in order.
 | `run` | yes | Command(s) to execute (see forms below) |
 | `retry` | no | Number of retries on failure (default 0) |
 | `sensitive` | no | When `true`, output is excluded from the state file and the step is always re-executed on resume |
+| `cached` | no | Cache successful results to skip re-execution (see [Step Caching](#step-caching)) |
 
 #### Passing output between steps
 
@@ -140,6 +141,39 @@ steps:
   - id: get-token
     run: "vault read -field=token secret/deploy"
     sensitive: true
+```
+
+#### Step Caching
+
+Steps that don't need to re-run every time (e.g., SSO login, dependency install) can be cached. Cache entries are stored in `~/.pipe/cache/` and shared across pipelines by step ID.
+
+```yaml
+steps:
+  - id: sso-login
+    run: "aws sso login"
+    cached: true                    # cache indefinitely
+
+  - id: build
+    run: "npm run build"
+    cached:
+      expireAfter: "1h"            # re-run after 1 hour
+
+  - id: deploy
+    run: "deploy --prod"
+    cached:
+      expireAfter: "18:10 UTC"     # re-run after 18:10 UTC daily
+```
+
+The `cached` field accepts either `true` (cache forever) or a mapping with `expireAfter`. Expiry supports Go durations (`30s`, `10m`, `1h`) and absolute wall-clock times (`18:10 UTC`, `15:00`). Only successful steps are cached — failures always re-execute.
+
+When `sensitive: true` and `cached: true` are combined, the cache records the success but stores no output. On cache hit the step is skipped, but no environment variable is set.
+
+#### Managing the cache
+
+```
+pipe cache list              # show all cached entries
+pipe cache clear             # clear all entries
+pipe cache clear <step-id>   # clear a specific entry
 ```
 
 ## Examples

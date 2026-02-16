@@ -230,6 +230,143 @@ steps:
 	}
 }
 
+func TestWarnings_CachedAndSensitive(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "warn-cached", `
+name: warn-cached
+steps:
+  - id: secret
+    run: "vault read token"
+    sensitive: true
+    cached: true
+`)
+	p, err := LoadPipeline("warn-cached")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	if len(warns) == 0 {
+		t.Fatal("expected warnings for cached + sensitive")
+	}
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "cached + sensitive") && strings.Contains(w, "PIPE_SECRET") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning about cached + sensitive with env var, got: %v", warns)
+	}
+}
+
+func TestWarnings_SensitiveVarReferenced(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "warn-ref", `
+name: warn-ref
+steps:
+  - id: get-token
+    run: "vault read -field=token secret/deploy"
+    sensitive: true
+  - id: deploy
+    run: "curl -H \"Authorization: $PIPE_GET_TOKEN\" https://api.example.com"
+`)
+	p, err := LoadPipeline("warn-ref")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	if len(warns) == 0 {
+		t.Fatal("expected warnings for sensitive var reference")
+	}
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "PIPE_GET_TOKEN") && strings.Contains(w, "re-execute on resume") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning about sensitive step re-execution, got: %v", warns)
+	}
+}
+
+func TestWarnings_SensitiveVarBracesSyntax(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "warn-braces", `
+name: warn-braces
+steps:
+  - id: get-token
+    run: "vault read token"
+    sensitive: true
+  - id: deploy
+    run: "echo ${PIPE_GET_TOKEN}"
+`)
+	p, err := LoadPipeline("warn-braces")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "PIPE_GET_TOKEN") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning for ${} syntax reference, got: %v", warns)
+	}
+}
+
+func TestWarnings_NoWarningsForCleanPipeline(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "clean", `
+name: clean
+steps:
+  - id: build
+    run: "echo build"
+    cached: true
+  - id: deploy
+    run: "echo deploy"
+`)
+	p, err := LoadPipeline("clean")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	if len(warns) != 0 {
+		t.Fatalf("expected no warnings, got: %v", warns)
+	}
+}
+
+func TestWarnings_SensitiveSubRunVarReferenced(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "warn-subrun", `
+name: warn-subrun
+steps:
+  - id: fetch
+    run:
+      - id: secret-api
+        run: "curl -s https://secret.api/token"
+        sensitive: true
+    sensitive: true
+  - id: use-it
+    run: "echo $PIPE_FETCH_SECRET_API"
+`)
+	p, err := LoadPipeline("warn-subrun")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "PIPE_FETCH_SECRET_API") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning for sensitive sub-run var reference, got: %v", warns)
+	}
+}
+
 func TestValidatePipeline_Invalid(t *testing.T) {
 	dir := overrideFilesDir(t)
 	writeYAML(t, dir, "bad", `
