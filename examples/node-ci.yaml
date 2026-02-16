@@ -1,0 +1,17 @@
+name: node-ci
+description: "Install deps, lint, test, and build a Node.js project"
+steps:
+  - id: install
+    run: "npm ci"
+
+  - id: quality
+    run:
+      - "npm run lint"
+      - "npm run typecheck"
+      - "npm run test -- --coverage"
+
+  - id: build
+    run: "npm run build"
+
+  - id: bundle-size
+    run: "du -sh dist/ | cut -f1"

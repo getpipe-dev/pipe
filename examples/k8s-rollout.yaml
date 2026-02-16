@@ -1,0 +1,25 @@
+name: k8s-rollout
+description: "Build an image and roll it out to a Kubernetes cluster"
+steps:
+  - id: get-sha
+    run: "git rev-parse --short HEAD"
+
+  - id: build-and-push
+    run: |
+      docker build -t myapp:$PIPE_GET_SHA .
+      docker tag myapp:$PIPE_GET_SHA gcr.io/my-project/myapp:$PIPE_GET_SHA
+      docker push gcr.io/my-project/myapp:$PIPE_GET_SHA
+
+  - id: deploy
+    run: "kubectl set image deployment/myapp myapp=gcr.io/my-project/myapp:$PIPE_GET_SHA -n production"
+
+  - id: wait
+    run: "kubectl rollout status deployment/myapp -n production --timeout=120s"
+    retry: 1
+
+  - id: verify
+    run:
+      - id: pods
+        run: "kubectl get pods -n production -l app=myapp -o wide"
+      - id: health
+        run: "curl -sf https://myapp.example.com/health"

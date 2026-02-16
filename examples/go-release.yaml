@@ -1,0 +1,23 @@
+name: go-release
+description: "Lint, test, and cross-compile a Go project for release"
+steps:
+  - id: checks
+    run:
+      - "go vet ./..."
+      - "golangci-lint run"
+      - "go test -race ./..."
+
+  - id: get-version
+    run: "git describe --tags --abbrev=0"
+
+  - id: build
+    run:
+      - id: linux
+        run: "GOOS=linux GOARCH=amd64 go build -ldflags '-s -w -X main.version=$PIPE_GET_VERSION' -o dist/app-linux-amd64"
+      - id: darwin
+        run: "GOOS=darwin GOARCH=arm64 go build -ldflags '-s -w -X main.version=$PIPE_GET_VERSION' -o dist/app-darwin-arm64"
+      - id: windows
+        run: "GOOS=windows GOARCH=amd64 go build -ldflags '-s -w -X main.version=$PIPE_GET_VERSION' -o dist/app-windows-amd64.exe"
+
+  - id: checksums
+    run: "cd dist && shasum -a 256 * > checksums.txt && cat checksums.txt"

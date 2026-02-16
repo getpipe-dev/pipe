@@ -1,0 +1,22 @@
+name: db-backup
+description: "Dump a PostgreSQL database, compress it, and upload to S3"
+steps:
+  - id: timestamp
+    run: "date +%Y%m%d-%H%M%S"
+
+  - id: credentials
+    run: "aws secretsmanager get-secret-value --secret-id prod/db --query SecretString --output text"
+    sensitive: true
+
+  - id: dump
+    run: "PGPASSWORD=$PIPE_CREDENTIALS pg_dump -h db.internal -U app -d myapp -Fc -f /tmp/backup-$PIPE_TIMESTAMP.dump"
+
+  - id: compress
+    run: "gzip /tmp/backup-$PIPE_TIMESTAMP.dump"
+
+  - id: upload
+    run: "aws s3 cp /tmp/backup-$PIPE_TIMESTAMP.dump.gz s3://my-backups/postgres/$PIPE_TIMESTAMP.dump.gz"
+    retry: 3
+
+  - id: cleanup
+    run: "rm -f /tmp/backup-$PIPE_TIMESTAMP.dump.gz"

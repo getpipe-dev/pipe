@@ -1,0 +1,22 @@
+name: docker-deploy
+description: "Build, tag, and push a Docker image then deploy to remote server"
+steps:
+  - id: get-version
+    run: "git describe --tags --always"
+
+  - id: lint
+    run:
+      - "hadolint Dockerfile"
+      - "docker compose config --quiet"
+
+  - id: build
+    run: "docker build -t myapp:$PIPE_GET_VERSION ."
+
+  - id: push
+    run: |
+      docker tag myapp:$PIPE_GET_VERSION registry.example.com/myapp:$PIPE_GET_VERSION
+      docker push registry.example.com/myapp:$PIPE_GET_VERSION
+
+  - id: deploy
+    run: "ssh deploy@prod 'docker pull registry.example.com/myapp:$PIPE_GET_VERSION && docker service update --image registry.example.com/myapp:$PIPE_GET_VERSION myapp'"
+    retry: 2

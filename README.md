@@ -142,6 +142,21 @@ steps:
     sensitive: true
 ```
 
+## Examples
+
+The [`examples/`](./examples) directory contains ready-to-use pipelines for common workflows:
+
+| File | Description |
+|------|-------------|
+| [docker-deploy.yaml](./examples/docker-deploy.yaml) | Build, tag, and push a Docker image then deploy to a remote server |
+| [go-release.yaml](./examples/go-release.yaml) | Lint, test, and cross-compile a Go project for release |
+| [db-backup.yaml](./examples/db-backup.yaml) | Dump a PostgreSQL database, compress it, and upload to S3 |
+| [node-ci.yaml](./examples/node-ci.yaml) | Install deps, lint, test, and build a Node.js project |
+| [k8s-rollout.yaml](./examples/k8s-rollout.yaml) | Build an image and roll it out to a Kubernetes cluster |
+| [ssl-renew.yaml](./examples/ssl-renew.yaml) | Renew SSL certificates and reload the web server |
+
+Copy any example to `~/.pipe/files/` and customize it for your environment.
+
 ## Dependencies
 
 Pipe is a pure-Go binary with a single external dependency:

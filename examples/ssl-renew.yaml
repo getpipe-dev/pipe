@@ -1,0 +1,15 @@
+name: ssl-renew
+description: "Renew SSL certificates and reload the web server"
+steps:
+  - id: renew
+    run: "certbot renew --non-interactive --agree-tos"
+
+  - id: verify
+    run: "openssl x509 -in /etc/letsencrypt/live/example.com/fullchain.pem -noout -enddate"
+
+  - id: reload
+    run: "nginx -t && systemctl reload nginx"
+
+  - id: check
+    run: "curl -sI https://example.com | head -1"
+    retry: 2
