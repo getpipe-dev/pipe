@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/idestis/pipe/compare/v1.0.3...v1.1.0) (2026-02-16)
+
+
+### Features
+
+* add step caching with expiry and validation warnings ([1b8d386](https://github.com/idestis/pipe/commit/1b8d38647866b8c2cc4696bc640b800873634970))
+
 ## [1.0.3](https://github.com/idestis/pipe/compare/v1.0.2...v1.0.3) (2026-02-16)
 
 
