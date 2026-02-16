@@ -45,6 +45,6 @@ func (l *Logger) Error(format string, args ...any) {
 	l.err.Printf(format, args...)
 }
 
-func (l *Logger) Close() {
-	l.file.Close()
+func (l *Logger) Close() error {
+	return l.file.Close()
 }

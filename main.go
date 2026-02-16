@@ -63,7 +63,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error creating logger: %v\n", err)
 		os.Exit(1)
 	}
-	defer log.Close()
+	defer func() { _ = log.Close() }()
 
 	if resumeID != "" {
 		log.Info("resuming pipeline %q (run %s)", pipeline.Name, rs.RunID)

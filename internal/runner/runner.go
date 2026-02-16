@@ -30,13 +30,17 @@ func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger) *Runner {
 	}
 }
 
+func (r *Runner) saveState() {
+	r.saveState()
+}
+
 func (r *Runner) Run() error {
 	for _, step := range r.pipeline.Steps {
 		if err := r.runStep(step); err != nil {
 			r.state.Status = "failed"
 			now := time.Now()
 			r.state.FinishedAt = &now
-			state.Save(r.state)
+			r.saveState()
 			r.log.Error("pipeline failed at step %q: %v", step.ID, err)
 			fmt.Fprintf(os.Stderr,
 				"\nPipeline failed. Resume with:\n  pipe %s --resume %s\n\n",
@@ -49,7 +53,7 @@ func (r *Runner) Run() error {
 	r.state.Status = "done"
 	now := time.Now()
 	r.state.FinishedAt = &now
-	state.Save(r.state)
+	r.saveState()
 	r.log.Info("pipeline %q completed (run %s)", r.pipeline.Name, r.state.RunID)
 	return nil
 }
@@ -101,7 +105,7 @@ func (r *Runner) runSingle(step model.Step) error {
 	ss := r.state.Steps[step.ID]
 	ss.Status = "running"
 	r.state.Steps[step.ID] = ss
-	state.Save(r.state)
+	r.saveState()
 
 	maxAttempts := step.Retry + 1
 	var output string
@@ -120,7 +124,7 @@ func (r *Runner) runSingle(step model.Step) error {
 		ss.Status = "failed"
 		ss.ExitCode = exitCode(err)
 		r.state.Steps[step.ID] = ss
-		state.Save(r.state)
+		r.saveState()
 		return fmt.Errorf("step %q failed: %w", step.ID, err)
 	}
 
@@ -131,7 +135,7 @@ func (r *Runner) runSingle(step model.Step) error {
 		ss.Output = output
 	}
 	r.state.Steps[step.ID] = ss
-	state.Save(r.state)
+	r.saveState()
 
 	r.envVars[EnvKey(step.ID)] = strings.TrimRight(output, "\n")
 	return nil
@@ -141,7 +145,7 @@ func (r *Runner) runParallelStrings(step model.Step) error {
 	ss := r.state.Steps[step.ID]
 	ss.Status = "running"
 	r.state.Steps[step.ID] = ss
-	state.Save(r.state)
+	r.saveState()
 
 	var (
 		mu   sync.Mutex
@@ -169,14 +173,14 @@ func (r *Runner) runParallelStrings(step model.Step) error {
 	if len(errs) > 0 {
 		ss.Status = "failed"
 		r.state.Steps[step.ID] = ss
-		state.Save(r.state)
+		r.saveState()
 		return fmt.Errorf("step %q parallel failures: %s", step.ID, strings.Join(errs, "; "))
 	}
 
 	ss.Status = "done"
 	ss.ExitCode = 0
 	r.state.Steps[step.ID] = ss
-	state.Save(r.state)
+	r.saveState()
 	return nil
 }
 
@@ -187,7 +191,7 @@ func (r *Runner) runParallelSubRuns(step model.Step) error {
 		ss.SubSteps = make(map[string]state.StepState)
 	}
 	r.state.Steps[step.ID] = ss
-	state.Save(r.state)
+	r.saveState()
 
 	var (
 		mu   sync.Mutex
@@ -241,14 +245,14 @@ func (r *Runner) runParallelSubRuns(step model.Step) error {
 	if len(errs) > 0 {
 		ss.Status = "failed"
 		r.state.Steps[step.ID] = ss
-		state.Save(r.state)
+		r.saveState()
 		return fmt.Errorf("step %q sub-run failures: %s", step.ID, strings.Join(errs, "; "))
 	}
 
 	ss.Status = "done"
 	ss.ExitCode = 0
 	r.state.Steps[step.ID] = ss
-	state.Save(r.state)
+	r.saveState()
 	return nil
 }
 
