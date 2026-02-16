@@ -75,8 +75,8 @@ func TestRunField_InvalidTopLevelKind(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for mapping")
 	}
-	if got := err.Error(); !contains(got, "unexpected YAML kind") {
-		t.Fatalf("expected error containing %q, got %q", "unexpected YAML kind", got)
+	if got := err.Error(); !contains(got, "must be a string command or a list of commands") {
+		t.Fatalf("expected error containing %q, got %q", "must be a string command or a list of commands", got)
 	}
 }
 
@@ -86,8 +86,8 @@ func TestRunField_InvalidSequenceElement(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nested sequence")
 	}
-	if got := err.Error(); !contains(got, "unexpected sequence element kind") {
-		t.Fatalf("expected error containing %q, got %q", "unexpected sequence element kind", got)
+	if got := err.Error(); !contains(got, "each list item must be a string or a mapping") {
+		t.Fatalf("expected error containing %q, got %q", "each list item must be a string or a mapping", got)
 	}
 }
 

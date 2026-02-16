@@ -67,10 +67,10 @@ func (r *RunField) UnmarshalYAML(value *yaml.Node) error {
 			r.SubRuns = subs
 			return nil
 		default:
-			return fmt.Errorf("run: unexpected sequence element kind %d", first.Kind)
+			return fmt.Errorf("run: each list item must be a string or a mapping (id + run)")
 		}
 
 	default:
-		return fmt.Errorf("run: unexpected YAML kind %d", value.Kind)
+		return fmt.Errorf("run: must be a string command or a list of commands")
 	}
 }

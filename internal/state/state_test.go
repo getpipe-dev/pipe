@@ -149,8 +149,8 @@ func TestLoad_FileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing state file")
 	}
-	if !strings.Contains(err.Error(), "reading state") {
-		t.Fatalf("expected error containing %q, got %q", "reading state", err.Error())
+	if !strings.Contains(err.Error(), "not found for pipeline") {
+		t.Fatalf("expected error containing %q, got %q", "not found for pipeline", err.Error())
 	}
 }
 

@@ -80,10 +80,12 @@ func ListPipelines() ([]PipelineInfo, error) {
 	for _, path := range matches {
 		data, err := os.ReadFile(path)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", filepath.Base(path), err)
 			continue
 		}
 		var p model.Pipeline
 		if err := yaml.Unmarshal(data, &p); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", filepath.Base(path), err)
 			continue
 		}
 		name := p.Name

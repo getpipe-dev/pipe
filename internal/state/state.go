@@ -76,6 +76,9 @@ func Load(pipelineName, runID string) (*RunState, error) {
 	path := statePath(pipelineName, runID)
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("run %q not found for pipeline %q", runID, pipelineName)
+		}
 		return nil, fmt.Errorf("reading state: %w", err)
 	}
 	var rs RunState

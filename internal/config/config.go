@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -31,7 +32,7 @@ func EnsureDirs(pipelineName string) error {
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
-			return err
+			return fmt.Errorf("creating directory %s: %w", d, err)
 		}
 	}
 	return nil
