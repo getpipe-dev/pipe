@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/idestis/pipe/compare/v1.0.1...v1.0.2) (2026-02-16)
+
+
+### Bug Fixes
+
+* add Makefile for local test and lint commands ([b134ca9](https://github.com/idestis/pipe/commit/b134ca94da3cb486f5b47235f84a144a2b0a3baa))
+
 ## [1.0.1](https://github.com/idestis/pipe/compare/v1.0.0...v1.0.1) (2026-02-16)
 
 
