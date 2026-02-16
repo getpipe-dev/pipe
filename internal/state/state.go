@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/destis/pipe/internal/config"
+	"github.com/idestis/pipe/internal/config"
 )
 
 type RunState struct {

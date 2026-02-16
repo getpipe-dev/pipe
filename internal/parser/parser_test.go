@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/destis/pipe/internal/config"
+	"github.com/idestis/pipe/internal/config"
 )
 
 // overrideFilesDir points config.FilesDir at a temp directory for the test

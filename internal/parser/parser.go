@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/destis/pipe/internal/config"
-	"github.com/destis/pipe/internal/model"
+	"github.com/idestis/pipe/internal/config"
+	"github.com/idestis/pipe/internal/model"
 	"gopkg.in/yaml.v3"
 )
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/destis/pipe/internal/config"
+	"github.com/idestis/pipe/internal/config"
 )
 
 // overrideStateDir points config.StateDir at a temp directory for the test

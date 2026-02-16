@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/destis/pipe/internal/config"
-	"github.com/destis/pipe/internal/logging"
-	"github.com/destis/pipe/internal/parser"
-	"github.com/destis/pipe/internal/runner"
-	"github.com/destis/pipe/internal/state"
+	"github.com/idestis/pipe/internal/config"
+	"github.com/idestis/pipe/internal/logging"
+	"github.com/idestis/pipe/internal/parser"
+	"github.com/idestis/pipe/internal/runner"
+	"github.com/idestis/pipe/internal/state"
 )
 
 // version is set by goreleaser via ldflags

@@ -10,12 +10,12 @@ Commands are organized into reusable, understandable steps, making them easier t
 ### GitHub Releases
 
 Download the latest binary for your platform from the
-[Releases](https://github.com/destis/pipe/releases) page.
+[Releases](https://github.com/idestis/pipe/releases) page.
 
 ### Homebrew
 
 ```
-brew tap destis/pipe
+brew tap idestis/pipe
 brew install pipe
 ```
 

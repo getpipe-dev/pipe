@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/destis/pipe/internal/logging"
-	"github.com/destis/pipe/internal/model"
-	"github.com/destis/pipe/internal/state"
+	"github.com/idestis/pipe/internal/logging"
+	"github.com/idestis/pipe/internal/model"
+	"github.com/idestis/pipe/internal/state"
 )
 
 type Runner struct {

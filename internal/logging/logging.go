@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/destis/pipe/internal/config"
+	"github.com/idestis/pipe/internal/config"
 )
 
 // Logger writes timestamped lines to stderr and a log file.

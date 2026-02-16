@@ -1,4 +1,4 @@
-module github.com/destis/pipe
+module github.com/idestis/pipe
 
 go 1.25.7
 
