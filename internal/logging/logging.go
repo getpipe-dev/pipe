@@ -19,7 +19,20 @@ type Logger struct {
 	file *os.File
 }
 
-func New(pipelineName, runID string) (*Logger, error) {
+type option struct{ fileOnly bool }
+
+// Option configures Logger behaviour.
+type Option func(*option)
+
+// FileOnly suppresses stderr output; only the log file is written.
+func FileOnly() Option { return func(o *option) { o.fileOnly = true } }
+
+func New(pipelineName, runID string, opts ...Option) (*Logger, error) {
+	var cfg option
+	for _, o := range opts {
+		o(&cfg)
+	}
+
 	ts := time.Now().Format("20060102-150405")
 	rid := runID
 	if len(rid) > 8 {
@@ -37,8 +50,13 @@ func New(pipelineName, runID string) (*Logger, error) {
 		return nil, fmt.Errorf("creating log file: %w", err)
 	}
 
+	w := io.Writer(f)
+	if !cfg.fileOnly {
+		w = io.MultiWriter(os.Stderr, f)
+	}
+
 	return &Logger{
-		w:    io.MultiWriter(os.Stderr, f),
+		w:    w,
 		file: f,
 	}, nil
 }

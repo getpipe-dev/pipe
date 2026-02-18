@@ -13,6 +13,7 @@ import (
 	"github.com/idestis/pipe/internal/logging"
 	"github.com/idestis/pipe/internal/model"
 	"github.com/idestis/pipe/internal/state"
+	"github.com/idestis/pipe/internal/ui"
 )
 
 type Runner struct {
@@ -20,9 +21,10 @@ type Runner struct {
 	state    *state.RunState
 	log      *logging.Logger
 	envVars  map[string]string
+	ui       *ui.StatusUI // nil in verbose mode
 }
 
-func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger, vars map[string]string) *Runner {
+func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger, vars map[string]string, statusUI *ui.StatusUI) *Runner {
 	env := make(map[string]string)
 	for k, v := range vars {
 		env[k] = v
@@ -32,6 +34,32 @@ func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger, vars map[st
 		state:    rs,
 		log:      log,
 		envVars:  env,
+		ui:       statusUI,
+	}
+}
+
+func (r *Runner) uiStatus(id string, s ui.Status) {
+	if r.ui != nil {
+		r.ui.SetStatus(id, s)
+	}
+}
+
+// uiStatusStep sets the UI status for all rows belonging to a step.
+func (r *Runner) uiStatusStep(step model.Step, s ui.Status) {
+	if r.ui == nil {
+		return
+	}
+	switch {
+	case step.Run.IsStrings():
+		for i := range step.Run.Strings {
+			r.ui.SetStatus(fmt.Sprintf("%s/run_%d", step.ID, i), s)
+		}
+	case step.Run.IsSubRuns():
+		for _, sub := range step.Run.SubRuns {
+			r.ui.SetStatus(fmt.Sprintf("%s/%s", step.ID, sub.ID), s)
+		}
+	default:
+		r.ui.SetStatus(step.ID, s)
 	}
 }
 
@@ -49,6 +77,9 @@ func (r *Runner) Run() error {
 			r.state.FinishedAt = &now
 			r.saveState()
 			r.log.Log("pipeline failed at step %q: %v", step.ID, err)
+			if r.ui != nil {
+				r.ui.Finish()
+			}
 			fmt.Fprintf(os.Stderr,
 				"\nPipeline failed. Resume with:\n  pipe %s --resume %s\n\n",
 				r.pipeline.Name, r.state.RunID,
@@ -62,6 +93,9 @@ func (r *Runner) Run() error {
 	r.state.FinishedAt = &now
 	r.saveState()
 	r.log.Log("pipeline %q completed (run %s)", r.pipeline.Name, r.state.RunID)
+	if r.ui != nil {
+		r.ui.Finish()
+	}
 	return nil
 }
 
@@ -161,6 +195,7 @@ func (r *Runner) runStep(step model.Step) error {
 	// Resume logic: skip done non-sensitive steps
 	if ss.Status == "done" && !step.Sensitive {
 		r.log.Log("[%s] skipping (already done)", step.ID)
+		r.uiStatusStep(step, ui.Done)
 		return nil
 	}
 
@@ -168,6 +203,7 @@ func (r *Runner) runStep(step model.Step) error {
 	if hit, err := r.tryCache(step); err != nil {
 		return err
 	} else if hit {
+		r.uiStatusStep(step, ui.Done)
 		return nil
 	}
 
@@ -193,6 +229,7 @@ func (r *Runner) runSingle(step model.Step, sl *logging.StepLogger) error {
 	ss.Status = "running"
 	r.state.Steps[step.ID] = ss
 	r.saveState()
+	r.uiStatus(step.ID, ui.Running)
 
 	sl.Log("%s", step.Run.Single)
 
@@ -216,6 +253,7 @@ func (r *Runner) runSingle(step model.Step, sl *logging.StepLogger) error {
 		r.state.Steps[step.ID] = ss
 		r.saveState()
 		sl.Exit(code)
+		r.uiStatus(step.ID, ui.Failed)
 		return fmt.Errorf("step %q failed: %w", step.ID, err)
 	}
 
@@ -228,6 +266,7 @@ func (r *Runner) runSingle(step model.Step, sl *logging.StepLogger) error {
 	r.state.Steps[step.ID] = ss
 	r.saveState()
 	sl.Exit(0)
+	r.uiStatus(step.ID, ui.Done)
 
 	r.envVars[EnvKey(step.ID)] = strings.TrimRight(output, "\n")
 
@@ -258,17 +297,22 @@ func (r *Runner) runParallelStrings(step model.Step, sl *logging.StepLogger) err
 		wg   sync.WaitGroup
 	)
 
-	for _, cmd := range step.Run.Strings {
+	for i, cmd := range step.Run.Strings {
 		wg.Add(1)
-		go func(c string) {
+		go func(idx int, c string) {
 			defer wg.Done()
+			rowID := fmt.Sprintf("%s/run_%d", step.ID, idx)
+			r.uiStatus(rowID, ui.Running)
 			sl.Log("parallel: %s", c)
 			if err := r.execNoCapture(c, sl); err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Sprintf("%s: %v", c, err))
 				mu.Unlock()
+				r.uiStatus(rowID, ui.Failed)
+			} else {
+				r.uiStatus(rowID, ui.Done)
 			}
-		}(cmd)
+		}(i, cmd)
 	}
 	wg.Wait()
 
@@ -315,13 +359,16 @@ func (r *Runner) runParallelSubRuns(step model.Step, _ *logging.StepLogger) erro
 		// Resume: skip done non-sensitive sub-runs
 		if existing.Status == "done" && !sub.Sensitive {
 			r.log.Log("[%s/%s] skipping (already done)", step.ID, sub.ID)
+			r.uiStatus(step.ID+"/"+sub.ID, ui.Done)
 			continue
 		}
 
 		wg.Add(1)
 		go func(sr model.SubRun) {
 			defer wg.Done()
-			subSl := r.log.Step(step.ID+"/"+sr.ID, sr.Sensitive)
+			rowID := step.ID + "/" + sr.ID
+			r.uiStatus(rowID, ui.Running)
+			subSl := r.log.Step(rowID, sr.Sensitive)
 			if sr.Sensitive {
 				subSl.Redacted()
 			}
@@ -342,6 +389,7 @@ func (r *Runner) runParallelSubRuns(step model.Step, _ *logging.StepLogger) erro
 				ss.SubSteps[sr.ID] = subState
 				errs = append(errs, fmt.Sprintf("%s: %v", sr.ID, err))
 				subSl.Exit(code)
+				r.uiStatus(rowID, ui.Failed)
 			} else {
 				subState.Status = "done"
 				subState.ExitCode = 0
@@ -352,6 +400,7 @@ func (r *Runner) runParallelSubRuns(step model.Step, _ *logging.StepLogger) erro
 				ss.SubSteps[sr.ID] = subState
 				r.envVars[EnvKey(step.ID, sr.ID)] = strings.TrimRight(output, "\n")
 				subSl.Exit(0)
+				r.uiStatus(rowID, ui.Done)
 			}
 		}(sub)
 	}

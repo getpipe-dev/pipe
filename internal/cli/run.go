@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/idestis/pipe/internal/config"
@@ -11,6 +12,7 @@ import (
 	"github.com/idestis/pipe/internal/resolve"
 	"github.com/idestis/pipe/internal/runner"
 	"github.com/idestis/pipe/internal/state"
+	"github.com/idestis/pipe/internal/ui"
 )
 
 func showPipelineHelp(name string) error {
@@ -118,7 +120,14 @@ func runPipeline(name string, overrides map[string]string) error {
 		log.Debug("new run state", "runID", rs.RunID)
 	}
 
-	plog, err := logging.New(pipeline.Name, rs.RunID)
+	var statusUI *ui.StatusUI
+	var plog *logging.Logger
+	if verbosity == 0 && ui.IsTTY(os.Stderr) {
+		plog, err = logging.New(pipeline.Name, rs.RunID, logging.FileOnly())
+		statusUI = ui.NewStatusUI(os.Stderr, pipeline.Steps)
+	} else {
+		plog, err = logging.New(pipeline.Name, rs.RunID)
+	}
 	if err != nil {
 		return fmt.Errorf("%s", friendlyError(err))
 	}
@@ -136,7 +145,7 @@ func runPipeline(name string, overrides map[string]string) error {
 
 	vars := runner.ResolveVars(pipeline.Vars, overrides)
 	log.Debug("resolved variables", "total", len(vars), "overrides", len(overrides))
-	r := runner.New(pipeline, rs, plog, vars)
+	r := runner.New(pipeline, rs, plog, vars, statusUI)
 	if resumeFlag != "" {
 		r.RestoreEnvFromState()
 	}

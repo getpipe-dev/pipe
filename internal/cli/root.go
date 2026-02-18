@@ -70,9 +70,14 @@ func init() {
 }
 
 func initVerbosity() {
-	if verbosity >= 2 {
+	switch {
+	case verbosity >= 2:
 		log.SetLevel(log.DebugLevel)
 		log.Debug("debug logging enabled")
+	case verbosity == 1:
+		// InfoLevel (default) — verbose mode
+	default:
+		log.SetLevel(log.WarnLevel) // compact mode: suppress info noise
 	}
 }
 
