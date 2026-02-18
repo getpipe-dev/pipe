@@ -31,25 +31,30 @@ var aliasAddCmd = &cobra.Command{
 	Short: "Create an alias for a pipeline",
 	Args:  exactArgs(2, "pipe alias add <alias> <pipeline>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
+		raw := args[0]
 		target := args[1]
 
-		if reservedNames[name] {
-			return fmt.Errorf("%q is a reserved command name", name)
+		owner, aName, _ := resolve.ParsePipeArg(raw)
+
+		if !validName(aName) {
+			return fmt.Errorf("invalid alias name %q — use only letters, digits, hyphens, and underscores", aName)
 		}
-		if !validName(name) {
-			return fmt.Errorf("invalid alias name %q — use only letters, digits, hyphens, and underscores", name)
+		if owner != "" && !validName(owner) {
+			return fmt.Errorf("invalid owner name %q — use only letters, digits, hyphens, and underscores", owner)
+		}
+		if reservedNames[aName] {
+			return fmt.Errorf("%q is a reserved command name", aName)
 		}
 
-		localPath := filepath.Join(config.FilesDir, name+".yaml")
+		localPath := filepath.Join(config.FilesDir, aName+".yaml")
 		if _, err := os.Stat(localPath); err == nil {
-			return fmt.Errorf("alias %q would shadow local pipeline %q — remove the local pipeline first or choose a different alias", name, localPath)
+			return fmt.Errorf("alias %q would shadow local pipeline %q — remove the local pipeline first or choose a different alias", aName, localPath)
 		}
 
-		if err := resolve.SetAlias(name, target); err != nil {
+		if err := resolve.SetAlias(aName, target); err != nil {
 			return err
 		}
-		log.Info("created alias", "alias", name, "target", target)
+		log.Info("created alias", "alias", aName, "target", target)
 		return nil
 	},
 }

@@ -28,6 +28,10 @@ func New(pipelineName, runID string) (*Logger, error) {
 	filename := fmt.Sprintf("%s-%s-%s.log", pipelineName, rid, ts)
 	path := filepath.Join(config.LogDir, filename)
 
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("creating log directory: %w", err)
+	}
+
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("creating log file: %w", err)
