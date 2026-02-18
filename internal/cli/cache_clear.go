@@ -10,7 +10,7 @@ import (
 var cacheClearCmd = &cobra.Command{
 	Use:   "clear [step-id]",
 	Short: "Clear one or all cache entries",
-	Args:  cobra.MaximumNArgs(1),
+	Args:  maxArgs(1, "pipe cache clear [step-id]"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 1 {
 			stepID := args[0]

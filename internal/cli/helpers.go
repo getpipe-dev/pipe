@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/idestis/pipe/internal/auth"
+	"github.com/idestis/pipe/internal/hub"
+	"github.com/spf13/cobra"
 )
 
 func validName(name string) bool {
@@ -88,4 +92,61 @@ func unwrapYAMLError(err error) error {
 		}
 	}
 	return err
+}
+
+func exactArgs(n int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != n {
+			return fmt.Errorf("usage: %s", usage)
+		}
+		return nil
+	}
+}
+
+func rangeArgs(min, max int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < min || len(args) > max {
+			return fmt.Errorf("usage: %s", usage)
+		}
+		return nil
+	}
+}
+
+func noArgs(cmd string) cobra.PositionalArgs {
+	return func(_ *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return fmt.Errorf("unknown arguments — usage: %s", cmd)
+		}
+		return nil
+	}
+}
+
+func maxArgs(max int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) > max {
+			return fmt.Errorf("too many arguments — usage: %s", usage)
+		}
+		return nil
+	}
+}
+
+// requireAuth loads credentials and returns them, or an error if not logged in.
+func requireAuth() (*auth.Credentials, error) {
+	creds, err := auth.LoadCredentials()
+	if err != nil {
+		return nil, fmt.Errorf("reading credentials: %w", err)
+	}
+	if creds == nil {
+		return nil, fmt.Errorf("not logged in — run \"pipe login\" first")
+	}
+	return creds, nil
+}
+
+// newHubClient creates a hub API client from stored credentials.
+func newHubClient(creds *auth.Credentials) *hub.Client {
+	baseURL := creds.APIBaseURL
+	if baseURL == "" {
+		baseURL = apiURL
+	}
+	return hub.NewClient(baseURL, creds.APIKey)
 }

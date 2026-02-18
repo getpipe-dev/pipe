@@ -10,7 +10,7 @@ import (
 var cacheListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List cached step results",
-	Args:  cobra.NoArgs,
+	Args:  noArgs("pipe cache list"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		entries, err := cache.List()
 		if err != nil {
