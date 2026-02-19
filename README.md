@@ -218,3 +218,7 @@ go vet ./...
 ```
 
 CI runs both automatically on every push and pull request via GitHub Actions.
+
+## License
+
+This project is licensed under the [MIT License](./LICENSE).
