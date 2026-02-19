@@ -385,6 +385,28 @@ steps:
 	}
 }
 
+func TestStep_OutputField(t *testing.T) {
+	input := `
+name: test
+steps:
+  - id: build
+    run: "make build"
+    output: true
+  - id: deploy
+    run: "make deploy"
+`
+	var p Pipeline
+	if err := yaml.Unmarshal([]byte(input), &p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !p.Steps[0].Output {
+		t.Fatal("step 0: expected output=true")
+	}
+	if p.Steps[1].Output {
+		t.Fatal("step 1: expected output=false (default)")
+	}
+}
+
 // contains is a tiny helper to avoid importing strings in tests.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)

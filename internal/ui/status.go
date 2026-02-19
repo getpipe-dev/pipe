@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,8 @@ type row struct {
 	status    Status
 	startedAt time.Time
 	duration  time.Duration
+	output    []string // collected output, shown only after step finishes
+	flushed   bool     // true after output has been flushed to history
 }
 
 // StatusUI renders a compact, live-updating status display to a terminal.
@@ -90,6 +93,8 @@ func (s *StatusUI) addRow(id string) {
 }
 
 // SetStatus updates the status of a step and re-renders.
+// When transitioning to Done/Failed, any collected output is flushed
+// above the status block with a colored pipe prefix.
 func (s *StatusUI) SetStatus(id string, st Status) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -108,9 +113,89 @@ func (s *StatusUI) SetStatus(id string, st Status) {
 		if !r.startedAt.IsZero() {
 			r.duration = time.Since(r.startedAt)
 		}
+		// Flush collected output above the status block
+		if len(r.output) > 0 {
+			s.flushOutput(r)
+		}
 	}
 
 	s.render()
+}
+
+// flushOutput prints collected output above the status block, then clears it.
+// Before flushing the target row, any preceding completed rows that haven't
+// been flushed yet are also flushed so terminal scrollback preserves the
+// original pipeline order.
+// Must be called with s.mu held.
+func (s *StatusUI) flushOutput(r *row) {
+	if s.lines > 0 {
+		_, _ = fmt.Fprintf(s.w, "\033[%dA", s.lines)
+	}
+
+	// Flush preceding completed rows to preserve pipeline order.
+	targetIdx := s.index[r.id]
+	for i := 0; i < targetIdx; i++ {
+		prev := &s.rows[i]
+		if prev.flushed || (prev.status != Done && prev.status != Failed) {
+			continue
+		}
+		s.flushRow(prev)
+	}
+
+	s.flushRow(r)
+	s.lines = 0
+}
+
+// flushRow writes a single row's status line and any collected output, then
+// marks it as flushed. Must be called with s.mu held.
+func (s *StatusUI) flushRow(r *row) {
+	icon := icons[r.status]
+	suffix := statusSuffix(*r)
+	_, _ = fmt.Fprintf(s.w, "\033[2K%s %-*s  %s\n", icon, s.maxWidth, r.id, suffix)
+
+	if len(r.output) > 0 {
+		pipe := outputPipe(r.status)
+		for _, line := range r.output {
+			_, _ = fmt.Fprintf(s.w, "\033[2K%s %s\n", pipe, line)
+		}
+	}
+
+	r.output = nil
+	r.flushed = true
+}
+
+// PrintAbove prints output line(s) above the status block, then re-renders
+// status rows below. The output scrolls into terminal history while the
+// status block stays pinned at the bottom.
+func (s *StatusUI) PrintAbove(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Move cursor up to the top of the status block
+	if s.lines > 0 {
+		_, _ = fmt.Fprintf(s.w, "\033[%dA", s.lines)
+	}
+
+	// Print each line of the message, clearing the line first
+	for _, line := range strings.Split(msg, "\n") {
+		_, _ = fmt.Fprintf(s.w, "\033[2K%s\n", line)
+	}
+
+	// Reset lines and re-render the status block below
+	s.lines = 0
+	s.render()
+}
+
+// AddOutput appends a line of output to the given step row.
+// Output is collected but only rendered after the step finishes (Done/Failed).
+func (s *StatusUI) AddOutput(id string, line string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx, ok := s.index[id]
+	if !ok {
+		return
+	}
+	s.rows[idx].output = append(s.rows[idx].output, line)
 }
 
 // Finish performs a final render. No subsequent redraws occur.
@@ -128,14 +213,30 @@ func (s *StatusUI) render() {
 		_, _ = fmt.Fprintf(s.w, "\033[%dA", s.lines)
 	}
 
+	n := 0
 	for _, r := range s.rows {
+		if r.flushed {
+			continue
+		}
 		icon := icons[r.status]
 		suffix := statusSuffix(r)
 		// \033[2K clears the entire line
 		_, _ = fmt.Fprintf(s.w, "\033[2K%s %-*s  %s\n", icon, s.maxWidth, r.id, suffix)
+		n++
 	}
 
-	s.lines = len(s.rows)
+	s.lines = n
+}
+
+func outputPipe(s Status) string {
+	switch s {
+	case Done:
+		return colorGreen + "│" + colorReset
+	case Failed:
+		return colorRed + "│" + colorReset
+	default:
+		return colorDim + "│" + colorReset
+	}
 }
 
 func statusSuffix(r row) string {

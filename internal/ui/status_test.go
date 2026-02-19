@@ -151,10 +151,148 @@ func TestFormatDuration(t *testing.T) {
 	}
 }
 
+func TestPrintAbove_InsertsAboveStatusRows(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewStatusUI(&buf, steps("build", "deploy"))
+
+	// Initial render to establish status block
+	s.SetStatus("build", Running)
+	buf.Reset()
+
+	// PrintAbove should move cursor up, print the message, then re-render status
+	s.PrintAbove("[build] hello world")
+	out := buf.String()
+
+	// Should contain the output line
+	if !strings.Contains(out, "[build] hello world") {
+		t.Fatalf("expected output line in output, got: %q", out)
+	}
+	// Should re-render status rows after the output
+	if !strings.Contains(out, "build") {
+		t.Fatalf("expected status rows re-rendered, got: %q", out)
+	}
+}
+
+func TestPrintAbove_MultipleLines(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewStatusUI(&buf, steps("build"))
+
+	s.SetStatus("build", Running)
+	buf.Reset()
+
+	s.PrintAbove("[build] line1\n[build] line2")
+	out := buf.String()
+
+	if !strings.Contains(out, "[build] line1") {
+		t.Fatalf("expected line1 in output, got: %q", out)
+	}
+	if !strings.Contains(out, "[build] line2") {
+		t.Fatalf("expected line2 in output, got: %q", out)
+	}
+}
+
+func TestAddOutput_FlushedAboveOnDone(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewStatusUI(&buf, steps("build"))
+
+	s.SetStatus("build", Running)
+	s.AddOutput("build", "compiling main.go")
+	s.AddOutput("build", "linking binary")
+
+	buf.Reset()
+	s.SetStatus("build", Done)
+	out := buf.String()
+
+	// Output should be flushed above with | prefix
+	if !strings.Contains(out, "compiling main.go") {
+		t.Fatalf("expected 'compiling main.go' flushed above, got: %q", out)
+	}
+	if !strings.Contains(out, "linking binary") {
+		t.Fatalf("expected 'linking binary' flushed above, got: %q", out)
+	}
+	if !strings.Contains(out, "│") {
+		t.Fatalf("expected '|' pipe prefix in output, got: %q", out)
+	}
+
+	// After flush, output slice should be cleared
+	if len(s.rows[0].output) != 0 {
+		t.Fatalf("expected output cleared after flush, got %d lines", len(s.rows[0].output))
+	}
+}
+
+func TestAddOutput_FlushedAboveOnFailed(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewStatusUI(&buf, steps("build"))
+
+	s.SetStatus("build", Running)
+	s.AddOutput("build", "error: something broke")
+	buf.Reset()
+	s.SetStatus("build", Failed)
+	out := buf.String()
+	if !strings.Contains(out, "error: something broke") {
+		t.Fatalf("expected 'error: something broke' flushed above, got: %q", out)
+	}
+	if !strings.Contains(out, "│") {
+		t.Fatalf("expected '|' pipe prefix in output, got: %q", out)
+	}
+}
+
+func TestAddOutput_NoOutputNoFlush(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewStatusUI(&buf, steps("build"))
+
+	s.SetStatus("build", Running)
+	buf.Reset()
+	s.SetStatus("build", Done)
+	out := buf.String()
+	// Should not contain pipe character when no output was collected
+	if strings.Contains(out, "│") {
+		t.Fatalf("expected no pipe output for step without output, got: %q", out)
+	}
+}
+
+func TestAddOutput_UnknownID(t *testing.T) {
+	var buf bytes.Buffer
+	s := NewStatusUI(&buf, steps("build"))
+	// Should not panic
+	s.AddOutput("nonexistent", "some output")
+}
+
 func TestMaxWidth_Alignment(t *testing.T) {
 	var buf bytes.Buffer
 	s := NewStatusUI(&buf, steps("a", "longname"))
 	if s.maxWidth != len("longname") {
 		t.Fatalf("expected maxWidth=%d, got %d", len("longname"), s.maxWidth)
+	}
+}
+
+func TestFlushOutput_PreservesOrder(t *testing.T) {
+	var buf bytes.Buffer
+	// Pipeline: change-context (no output), pods (with output)
+	s := NewStatusUI(&buf, steps("change-context", "pods"))
+
+	// change-context completes first, no output
+	s.SetStatus("change-context", Running)
+	s.SetStatus("change-context", Done)
+
+	// pods completes second, with output
+	s.SetStatus("pods", Running)
+	s.AddOutput("pods", "pod/nginx created")
+	buf.Reset()
+	s.SetStatus("pods", Done)
+	out := buf.String()
+
+	// change-context should appear before pods in the flushed output,
+	// preserving the original pipeline order.
+	ctxIdx := strings.Index(out, "change-context")
+	podsIdx := strings.Index(out, "pods")
+	if ctxIdx == -1 {
+		t.Fatalf("expected 'change-context' in output, got: %q", out)
+	}
+	if podsIdx == -1 {
+		t.Fatalf("expected 'pods' in output, got: %q", out)
+	}
+	if ctxIdx > podsIdx {
+		t.Fatalf("expected change-context before pods, but got change-context at %d, pods at %d\noutput: %q", ctxIdx, podsIdx, out)
 	}
 }

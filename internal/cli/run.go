@@ -155,7 +155,7 @@ func runPipeline(name string, overrides map[string]string) error {
 
 	vars := runner.ResolveVars(pipeline.Vars, overrides)
 	log.Debug("resolved variables", "total", len(vars), "overrides", len(overrides))
-	r := runner.New(pipeline, rs, plog, vars, statusUI)
+	r := runner.New(pipeline, rs, plog, vars, statusUI, verbosity)
 	if resumeFlag != "" {
 		r.RestoreEnvFromState()
 	}

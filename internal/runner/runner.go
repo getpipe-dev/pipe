@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -20,26 +21,79 @@ import (
 )
 
 type Runner struct {
-	pipeline *model.Pipeline
-	state    *state.RunState
-	log      *logging.Logger
-	envVars  map[string]string
-	ui       *ui.StatusUI // nil in verbose mode
-	envMu    sync.Mutex   // protects envVars
-	stateMu  sync.Mutex   // protects state.Steps and saveState
+	pipeline  *model.Pipeline
+	state     *state.RunState
+	log       *logging.Logger
+	envVars   map[string]string
+	ui        *ui.StatusUI // nil in verbose mode
+	verbosity int
+	envMu     sync.Mutex // protects envVars
+	stateMu   sync.Mutex // protects state.Steps and saveState
+	emitMu    sync.Mutex // protects verbose-mode stderr output
 }
 
-func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger, vars map[string]string, statusUI *ui.StatusUI) *Runner {
+func New(p *model.Pipeline, rs *state.RunState, log *logging.Logger, vars map[string]string, statusUI *ui.StatusUI, verbosity int) *Runner {
 	env := make(map[string]string)
 	for k, v := range vars {
 		env[k] = v
 	}
 	return &Runner{
-		pipeline: p,
-		state:    rs,
-		log:      log,
-		envVars:  env,
-		ui:       statusUI,
+		pipeline:  p,
+		state:     rs,
+		log:       log,
+		envVars:   env,
+		ui:        statusUI,
+		verbosity: verbosity,
+	}
+}
+
+// shouldShowOutput determines if a step's stdout should be shown in real-time.
+//
+//	| Mode              | output: true | output: false (default) |
+//	|-------------------|--------------|-------------------------|
+//	| v=0 (compact+TTY) | show         | no                      |
+//	| v=1 (-v)          | show         | no                      |
+//	| v=2 (-vv)         | show         | override: show anyway   |
+//
+// sensitive: true always wins — never show output.
+func shouldShowOutput(step model.Step, sensitive bool, verbosity int) bool {
+	if sensitive {
+		return false
+	}
+	if verbosity >= 2 {
+		return true
+	}
+	return step.Output
+}
+
+// outputEmitter returns an emit function and a flush function for step output.
+// In compact mode (StatusUI present), emit collects output for display after
+// the step finishes; flush is a no-op.
+// In verbose mode, emit buffers lines and flush writes them as a grouped block
+// to stderr with [stepID] prefix — preventing interleaved output from parallel steps.
+func (r *Runner) outputEmitter(stepID string) (emit func(string), flush func()) {
+	if r.ui != nil {
+		return func(line string) {
+			r.ui.AddOutput(stepID, line)
+		}, func() {}
+	}
+	var mu sync.Mutex
+	var lines []string
+	return func(line string) {
+		mu.Lock()
+		lines = append(lines, line)
+		mu.Unlock()
+	}, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if len(lines) == 0 {
+			return
+		}
+		r.emitMu.Lock()
+		for _, line := range lines {
+			fmt.Fprintf(os.Stderr, "[%s] %s\n", stepID, line)
+		}
+		r.emitMu.Unlock()
 	}
 }
 
@@ -404,12 +458,13 @@ func (r *Runner) runSingle(step model.Step, sl *logging.StepLogger) error {
 
 	sl.Log("%s", step.Run.Single)
 
+	show := shouldShowOutput(step, step.Sensitive, r.verbosity)
 	maxAttempts := step.Retry + 1
 	var output string
 
 	attempts, err := Retry(maxAttempts, func() error {
 		var execErr error
-		output, execErr = r.execCapture(step.Run.Single, sl)
+		output, execErr = r.execCapture(step.Run.Single, sl, show, step.ID)
 		return execErr
 	})
 
@@ -465,6 +520,8 @@ func (r *Runner) runParallelStrings(step model.Step, sl *logging.StepLogger) err
 		wg   sync.WaitGroup
 	)
 
+	show := shouldShowOutput(step, step.Sensitive, r.verbosity)
+
 	for i, cmd := range step.Run.Strings {
 		wg.Add(1)
 		go func(idx int, c string) {
@@ -472,7 +529,7 @@ func (r *Runner) runParallelStrings(step model.Step, sl *logging.StepLogger) err
 			rowID := fmt.Sprintf("%s/run_%d", step.ID, idx)
 			r.uiStatus(rowID, ui.Running)
 			sl.Log("parallel: %s", c)
-			if err := r.execNoCapture(c, sl); err != nil {
+			if err := r.execNoCapture(c, sl, show, rowID); err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Sprintf("%s: %v", c, err))
 				mu.Unlock()
@@ -542,7 +599,8 @@ func (r *Runner) runParallelSubRuns(step model.Step, _ *logging.StepLogger) erro
 			}
 			subSl.Log("%s", sr.Run)
 
-			output, err := r.execCapture(sr.Run, subSl)
+			show := shouldShowOutput(step, sr.Sensitive, r.verbosity)
+			output, err := r.execCapture(sr.Run, subSl, show, rowID)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -608,19 +666,43 @@ func (r *Runner) runParallelSubRuns(step model.Step, _ *logging.StepLogger) erro
 	return nil
 }
 
-func (r *Runner) execCapture(cmdStr string, sl *logging.StepLogger) (string, error) {
+func (r *Runner) execCapture(cmdStr string, sl *logging.StepLogger, showOutput bool, stepID string) (string, error) {
 	cmd := exec.Command("sh", "-c", cmdStr)
 	cmd.Env = r.buildEnv()
 	var stdout bytes.Buffer
+
+	if showOutput {
+		emit, flushOutput := r.outputEmitter(stepID)
+		ow := newOutputWriter(emit)
+		cmd.Stdout = io.MultiWriter(&stdout, ow)
+		cmd.Stderr = sl.Writer()
+		err := cmd.Run()
+		ow.Flush()
+		flushOutput()
+		return stdout.String(), err
+	}
+
 	cmd.Stdout = &stdout
 	cmd.Stderr = sl.Writer()
 	err := cmd.Run()
 	return stdout.String(), err
 }
 
-func (r *Runner) execNoCapture(cmdStr string, sl *logging.StepLogger) error {
+func (r *Runner) execNoCapture(cmdStr string, sl *logging.StepLogger, showOutput bool, stepID string) error {
 	cmd := exec.Command("sh", "-c", cmdStr)
 	cmd.Env = r.buildEnv()
+
+	if showOutput {
+		emit, flushOutput := r.outputEmitter(stepID)
+		ow := newOutputWriter(emit)
+		cmd.Stdout = io.MultiWriter(sl.Writer(), ow)
+		cmd.Stderr = sl.Writer()
+		err := cmd.Run()
+		ow.Flush()
+		flushOutput()
+		return err
+	}
+
 	cmd.Stdout = sl.Writer()
 	cmd.Stderr = sl.Writer()
 	return cmd.Run()
