@@ -60,7 +60,7 @@ export default defineConfig({
                 { slug: "reference/cli/run" },
                 { slug: "reference/cli/init" },
                 { slug: "reference/cli/list" },
-                { slug: "reference/cli/validate" },
+                { slug: "reference/cli/lint" },
                 { slug: "reference/cli/inspect" },
                 { slug: "reference/cli/rm" },
                 { slug: "reference/cli/cache" },

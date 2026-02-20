@@ -53,7 +53,7 @@ func init() {
 
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(validateCmd)
+	rootCmd.AddCommand(lintCmd)
 	rootCmd.AddCommand(cacheCmd)
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)

@@ -1,0 +1,68 @@
+---
+title: pipe lint
+description: Lint a pipeline for errors and warnings.
+---
+
+## Synopsis
+
+```
+pipe lint <name>
+```
+
+## Description
+
+Resolves the pipeline (alias, Hub, or local), parses the YAML, checks for errors, and reports warnings. Does not execute any steps.
+
+**Errors** (pipeline is invalid):
+- Invalid or unknown YAML fields (strict parsing)
+- Missing required fields (`id`, `run` on each step)
+- Invalid variable keys
+- Dependency cycles and self-dependencies
+
+**Warnings** (pipeline is valid but may have issues):
+- Unknown `depends_on` references (ignored at runtime)
+- Possible embedded secrets in non-sensitive steps
+- Unused declared variables
+- `cache` combined with `sensitive`
+- References to sensitive step output variables
+- Missing pipeline description (lint-only)
+- `retry > 0` combined with `sensitive: true` (lint-only)
+
+> **Backward compatibility:** `pipe validate` is accepted as an alias.
+
+## Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<name>` | Pipeline name, alias, or `owner/name` path |
+
+## Flags
+
+None.
+
+## Examples
+
+```bash
+pipe lint deploy
+```
+
+```
+pipeline "deploy" is valid
+```
+
+With warnings:
+
+```bash
+pipe lint my-pipeline
+```
+
+```
+WARN step "fetch": unknown dependency "setup" (ignored)
+WARN step "auth": possible secret detected (GitHub token) — consider adding sensitive: true
+pipeline "my-pipeline" is valid with 2 warning(s)
+```
+
+## See also
+
+- [Writing Pipelines](/guides/writing-pipelines/)
+- [YAML Schema](/reference/yaml-schema/)

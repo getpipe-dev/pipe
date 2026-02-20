@@ -9,10 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var validateCmd = &cobra.Command{
-	Use:   "validate <name>",
-	Short: "Validate a pipeline",
-	Args:  exactArgs(1, "pipe validate <name>"),
+var lintCmd = &cobra.Command{
+	Use:     "lint <name>",
+	Aliases: []string{"validate"},
+	Short:   "Lint a pipeline for errors and warnings",
+	Args:    exactArgs(1, "pipe lint <name>"),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ref, err := resolve.Resolve(args[0])
 		if err != nil {
@@ -26,10 +27,15 @@ var validateCmd = &cobra.Command{
 			}
 			return err
 		}
-		for _, w := range parser.Warnings(pipeline) {
+		warns := parser.LintWarnings(pipeline)
+		for _, w := range warns {
 			log.Warn(w)
 		}
-		fmt.Printf("pipeline %q is valid\n", ref.Name)
+		if len(warns) > 0 {
+			fmt.Printf("pipeline %q is valid with %d warning(s)\n", ref.Name, len(warns))
+		} else {
+			fmt.Printf("pipeline %q is valid\n", ref.Name)
+		}
 		return nil
 	},
 }
