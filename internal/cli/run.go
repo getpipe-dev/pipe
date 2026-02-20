@@ -123,6 +123,7 @@ func runPipeline(name string, overrides map[string]string) error {
 	var statusUI *ui.StatusUI
 	var plog *logging.Logger
 	if verbosity == 0 && ui.IsTTY(os.Stderr) {
+		log.SetLevel(log.WarnLevel)
 		plog, err = logging.New(pipeline.Name, rs.RunID, logging.FileOnly())
 		statusUI = ui.NewStatusUI(os.Stderr, pipeline.Steps)
 	} else {

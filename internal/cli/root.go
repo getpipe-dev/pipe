@@ -75,7 +75,7 @@ func initVerbosity() {
 	case verbosity == 1:
 		// InfoLevel (default) — verbose mode
 	default:
-		log.SetLevel(log.WarnLevel) // compact mode: suppress info noise
+		// InfoLevel: show user-facing messages (pushed, pulled, etc.)
 	}
 }
 

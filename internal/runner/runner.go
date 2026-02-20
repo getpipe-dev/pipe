@@ -250,7 +250,7 @@ func (r *Runner) Run() error {
 			r.ui.Finish()
 		}
 		fmt.Fprintf(os.Stderr,
-			"\nPipeline failed. Resume with:\n  pipe %s --resume %s\n\n",
+			"\n\033[2mPipeline failed. Resume with:\n  pipe %s --resume %s\033[0m\n\n",
 			r.pipeline.Name, r.state.RunID,
 		)
 		return firstErr
