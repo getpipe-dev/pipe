@@ -14,6 +14,7 @@ type Graph struct {
 	Dependents map[string][]string // successors: step → steps that depend on it
 	InDegree   map[string]int      // number of predecessors
 	Order      []string            // step IDs preserving YAML order
+	Warnings   []string            // non-fatal issues (e.g. unknown dep refs)
 }
 
 // pipeVarPattern matches $PIPE_<NAME> and ${PIPE_<NAME>} references in shell commands.
@@ -75,7 +76,8 @@ func Build(steps []model.Step) (*Graph, error) {
 				return nil, fmt.Errorf("step %q: self-dependency", s.ID)
 			}
 			if _, ok := stepByID[dep]; !ok {
-				return nil, fmt.Errorf("step %q: unknown dependency %q", s.ID, dep)
+				g.Warnings = append(g.Warnings, fmt.Sprintf("step %q: unknown dependency %q (ignored)", s.ID, dep))
+				continue
 			}
 			addEdge(dep, s.ID)
 		}

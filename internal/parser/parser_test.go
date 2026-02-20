@@ -453,12 +453,19 @@ steps:
     run: "echo a"
     depends_on: "nonexistent"
 `)
-	_, err := LoadPipeline("unknown-dep")
-	if err == nil {
-		t.Fatal("expected error for unknown depends_on ref")
+	p, err := LoadPipeline("unknown-dep")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown dependency") {
-		t.Fatalf("expected error containing %q, got %q", "unknown dependency", err.Error())
+	warns := Warnings(p)
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "unknown dependency") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning about unknown dependency, got: %v", warns)
 	}
 }
 
@@ -497,6 +504,123 @@ steps:
 	_, err := LoadPipeline("valid-deps")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadPipeline_UnknownField(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "unknown-field", `
+name: unknown-field
+steps:
+  - id: a
+    run: "echo a"
+    sensitiv: true
+`)
+	_, err := LoadPipeline("unknown-field")
+	if err == nil {
+		t.Fatal("expected error for unknown YAML field")
+	}
+	if !strings.Contains(err.Error(), "parsing pipeline") {
+		t.Fatalf("expected error containing %q, got %q", "parsing pipeline", err.Error())
+	}
+}
+
+func TestWarnings_UnusedVar(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "unused-var", `
+name: unused-var
+vars:
+  GREETING: "hello"
+steps:
+  - id: a
+    run: "echo hi"
+`)
+	p, err := LoadPipeline("unused-var")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "GREETING") && strings.Contains(w, "never referenced") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning about unused var GREETING, got: %v", warns)
+	}
+}
+
+func TestWarnings_UsedVarNoWarning(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "used-var", `
+name: used-var
+vars:
+  GREETING: "hello"
+steps:
+  - id: a
+    run: "echo $PIPE_VAR_GREETING"
+`)
+	p, err := LoadPipeline("used-var")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := Warnings(p)
+	for _, w := range warns {
+		if strings.Contains(w, "GREETING") && strings.Contains(w, "never referenced") {
+			t.Fatalf("unexpected unused var warning: %s", w)
+		}
+	}
+}
+
+func TestLintWarnings_EmptyDescription(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "no-desc", `
+name: no-desc
+steps:
+  - id: a
+    run: "echo a"
+`)
+	p, err := LoadPipeline("no-desc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := LintWarnings(p)
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "missing a description") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected lint warning about missing description, got: %v", warns)
+	}
+}
+
+func TestLintWarnings_RetrySensitive(t *testing.T) {
+	dir := overrideFilesDir(t)
+	writeYAML(t, dir, "retry-sens", `
+name: retry-sens
+description: test
+steps:
+  - id: a
+    run: "vault read token"
+    sensitive: true
+    retry: 3
+`)
+	p, err := LoadPipeline("retry-sens")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	warns := LintWarnings(p)
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "retry") && strings.Contains(w, "sensitive") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected lint warning about retry + sensitive, got: %v", warns)
 	}
 }
 

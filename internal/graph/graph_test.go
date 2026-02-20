@@ -154,12 +154,19 @@ func TestBuild_UnknownStepRef(t *testing.T) {
 	ss := steps(
 		stepDef{id: "a", run: single("echo a"), deps: []string{"nonexistent"}},
 	)
-	_, err := Build(ss)
-	if err == nil {
-		t.Fatal("expected error for unknown step ref")
+	g, err := Build(ss)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown dependency") {
-		t.Fatalf("expected error about unknown dependency, got: %v", err)
+	if len(g.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(g.Warnings), g.Warnings)
+	}
+	if !strings.Contains(g.Warnings[0], "unknown dependency") {
+		t.Fatalf("expected warning about unknown dependency, got: %s", g.Warnings[0])
+	}
+	// Unknown dep should be dropped — step has no predecessors
+	if g.InDegree["a"] != 0 {
+		t.Fatalf("expected a in-degree 0 (unknown dep dropped), got %d", g.InDegree["a"])
 	}
 }
 

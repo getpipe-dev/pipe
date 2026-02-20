@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +33,9 @@ func LoadPipeline(name string) (*model.Pipeline, error) {
 	}
 
 	var p model.Pipeline
-	if err := yaml.Unmarshal(data, &p); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&p); err != nil {
 		return nil, fmt.Errorf("parsing pipeline %q: %w", name, err)
 	}
 
@@ -84,6 +87,13 @@ func Validate(p *model.Pipeline) error {
 func Warnings(p *model.Pipeline) []string {
 	var warns []string
 
+	// Graph warnings (e.g. unknown dependency references)
+	if len(p.Steps) > 0 {
+		if g, err := graph.Build(p.Steps); err == nil {
+			warns = append(warns, g.Warnings...)
+		}
+	}
+
 	// Collect env var names produced by sensitive steps
 	sensitiveVars := make(map[string]string) // env var → step ID
 	for _, s := range p.Steps {
@@ -119,6 +129,49 @@ func Warnings(p *model.Pipeline) []string {
 			}
 		}
 	}
+
+	// Secret detection warnings
+	warns = append(warns, SecretWarnings(p)...)
+
+	// Unused vars: declared in vars but never referenced by any step
+	for key := range p.Vars {
+		varName := varEnvKey(key)
+		used := false
+		for _, s := range p.Steps {
+			if referencesVar(s, varName) {
+				used = true
+				break
+			}
+		}
+		if !used {
+			warns = append(warns, fmt.Sprintf(
+				"var %q is declared but never referenced as $%s",
+				key, varName,
+			))
+		}
+	}
+
+	return warns
+}
+
+// LintWarnings returns Warnings() plus lint-only advisories that are too
+// noisy for every run but useful when explicitly linting.
+func LintWarnings(p *model.Pipeline) []string {
+	warns := Warnings(p)
+
+	if p.Description == "" {
+		warns = append(warns, "pipeline is missing a description")
+	}
+
+	for _, s := range p.Steps {
+		if s.Retry > 0 && s.Sensitive {
+			warns = append(warns, fmt.Sprintf(
+				"step %q: retry > 0 with sensitive: true — command re-executes on each retry attempt",
+				s.ID,
+			))
+		}
+	}
+
 	return warns
 }
 
@@ -137,6 +190,12 @@ func validVarKey(key string) bool {
 		}
 	}
 	return true
+}
+
+// varEnvKey mirrors runner.VarEnvKey: builds a PIPE_VAR_* env name from a var key.
+func varEnvKey(key string) string {
+	k := strings.ReplaceAll(key, "-", "_")
+	return "PIPE_VAR_" + strings.ToUpper(k)
 }
 
 // envKey mirrors runner.EnvKey: joins parts with _, replaces hyphens, uppercases.
@@ -217,7 +276,9 @@ func LoadPipelineFromPath(path, displayName string) (*model.Pipeline, error) {
 	}
 
 	var p model.Pipeline
-	if err := yaml.Unmarshal(data, &p); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&p); err != nil {
 		return nil, fmt.Errorf("parsing pipeline %q: %w", displayName, err)
 	}
 
