@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.1.0](https://github.com/getpipe-dev/pipe/compare/v2.0.0...v2.1.0) (2026-02-20)
+
+
+### Features
+
+* **cli:** enforce hub username rules with validOwner() ([e33dda7](https://github.com/getpipe-dev/pipe/commit/e33dda7e3f19306aec9393f492da899408c1d89b))
+* **cli:** rename validate command to lint with validate alias ([5adb32a](https://github.com/getpipe-dev/pipe/commit/5adb32adde7d288c36041e90618d9c1eb1ddfe9b))
+* **cli:** show log output for non-run commands and dim resume note ([a68bbdc](https://github.com/getpipe-dev/pipe/commit/a68bbdce612e93816dde2974974249e596250b06))
+* **parser:** add lint checks — unknown deps as warnings, secret detection, unused vars ([4fd8cf3](https://github.com/getpipe-dev/pipe/commit/4fd8cf34b1b999dc3844d11bf96b2df943ab700e))
+* **ui:** add step output display with flush ordering ([80a36ee](https://github.com/getpipe-dev/pipe/commit/80a36ee21e7bb8a7c82c8485d0d56520f188b94f))
+
 ## [2.0.0](https://github.com/getpipe-dev/pipe/compare/v1.1.0...v2.0.0) (2026-02-19)
 
 
