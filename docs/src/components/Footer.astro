@@ -1,0 +1,50 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+
+const links = [
+  { label: "Home", href: "https://getpipe.dev" },
+  { label: "Hub", href: "https://hub.getpipe.dev" },
+  { label: "Docs", href: "https://docs.getpipe.dev" },
+  { label: "GitHub", href: "https://github.com/getpipe-dev/pipe" },
+];
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+<nav class="cross-links" aria-label="Pipe ecosystem">
+  <ul>
+    {links.map(({ label, href }) => (
+      <li>
+        <a href={href} rel="noopener">{label}</a>
+      </li>
+    ))}
+  </ul>
+</nav>
+
+<style>
+  .cross-links {
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding: 1rem var(--sl-content-pad-x);
+    text-align: center;
+    font-size: var(--sl-text-xs);
+  }
+
+  .cross-links ul {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .cross-links a {
+    color: var(--sl-color-gray-3);
+    text-decoration: none;
+  }
+
+  .cross-links a:hover {
+    color: var(--sl-color-accent);
+    text-decoration: underline;
+  }
+</style>
